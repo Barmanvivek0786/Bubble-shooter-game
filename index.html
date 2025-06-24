@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Bubble Shooter Final - Vivek Barman</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: linear-gradient(to bottom right, #111, #1f1f1f);
+      font-family: 'Segoe UI', sans-serif;
+    }
+
+    canvas {
+      display: block;
+      margin: 0 auto;
+      background: #fdfdfd;
+      border: 4px solid #444;
+      border-radius: 12px;
+      box-shadow: 0 0 15px rgba(0,0,0,0.5);
+    }
+
+    .footer, .score, .timer, .controls {
+      position: absolute;
+      z-index: 5;
+      color: black;
+      font-weight: bold;
+    }
+
+    .footer {
+      bottom: 5px;
+      width: 100%;
+      text-align: center;
+      font-size: 14px;
+    }
+
+    .score { top: 200px; left: 10px; font-size: 16px; }
+    .timer { top: 200px; right: 10px; font-size: 16px; }
+
+    .controls {
+      top: 50px;
+      right: 10px;
+    }
+
+    .controls button {
+      padding: 6px 12px;
+      font-size: 14px;
+      border: none;
+      background: #ff4081;
+      color: white;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-bottom: 5px;
+    }
+
+    .controls button:hover {
+      background: #e91e63;
+    }
+
+    .game-over-screen, .start-screen {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.85);
+      color: white;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+    }
+
+    .game-over-screen h1, .start-screen h1 {
+      font-size: 36px;
+      margin-bottom: 10px;
+      color:#ff4d00;
+    }
+
+    .game-over-screen p, .start-screen p {
+      font-size: 20px;
+      margin-bottom: 20px;
+    }
+
+    .game-over-screen button, .start-screen button {
+      padding: 10px 20px;
+      font-size: 18px;
+      background: #4caf50;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .game-over-screen button:hover, .start-screen button:hover {
+      background: #43a047;
+    }
+    @media (max-width: 480px) {
+          canvas {
+        width: 100vw;
+        height: 100vh;
+      }
+    }
+    
+    a {
+        text-decoration:none;
+        background-color:white;
+        padding:3px 10px;   
+        border-radius:20px;
+        font-weight: bold;
+    }  
+  </style>
+</head>
+<body>
+
+<canvas id="gameCanvas" width="360" height="640"></canvas>
+
+<div class="score">Score: <span id="score">0</span></div>
+<div class="timer">Time: <span id="time">150</span>s</div>
+<div class="controls">
+  <button id="muteBtn">🔊 Mute</button>
+</div>
+<!--  <div class="footer">💻 Developed by Vivek Barman</div> -->
+
+<div class="start-screen" id="startScreen">
+  <h1>🔴 Bubble Shooter</h1>
+  <p>Pop 3+ bubbles of the same color!</p>
+  <button onclick="startGame()">Start Game</button><br><p>Devloper:Vivek barman</p>
+  <p><a href="mailto: barmanvivek0786@gmail.com">contact us</a></p>
+</div>
+
+<div class="game-over-screen" id="gameOverScreen" style="display: none;">
+  <h1>Game Over</h1>
+  <p>Your Final Score: <span id="finalScore">0</span></p>
+  <button onclick="restartGame()">Play Again</button>
+</div>
+
+<!-- 🎵 Sounds -->
+<audio id="bgMusic" src="https://audio.jukehost.co.uk/U0D79GrzTLw6WTZLKssHaafMLZDw2IPC" loop></audio>
+<audio id="shootSound" src="https://audio.jukehost.co.uk/Bs99qD2yZCB3L7lERJIkdt56fuwzeKfd"></audio>
+<audio id="popSound" src="https://audio.jukehost.co.uk/7FlN8qJMYalAgoCctLHe9OdrZE07TyMO"></audio>
+
+<script>
+  const canvas = document.getElementById("gameCanvas");
+  const ctx = canvas.getContext("2d");
+
+  const scoreDisplay = document.getElementById("score");
+  const timeDisplay = document.getElementById("time");
+  const finalScoreDisplay = document.getElementById("finalScore");
+  const gameOverScreen = document.getElementById("gameOverScreen");
+  const startScreen = document.getElementById("startScreen");
+  const muteBtn = document.getElementById("muteBtn");
+
+  const shootSound = document.getElementById("shootSound");
+  const popSound = document.getElementById("popSound");
+  const bgMusic = document.getElementById("bgMusic");
+
+  const CANVAS_WIDTH = canvas.width;
+  const CANVAS_HEIGHT = canvas.height;
+  const BUBBLE_RADIUS = 15;
+  const COLORS = ["red", "blue", "green", "yellow"];
+  const ROWS = 12, COLS = 12;
+
+  let shooterX = CANVAS_WIDTH / 2;
+  let shooterY = CANVAS_HEIGHT - 30;
+  let angle = 0;
+  let score = 0;
+  let timeLeft = 150;
+  let isGameOver = false;
+  let muted = false;
+
+  let grid = [], bubbles = [], currentBubble, timerInterval;
+
+  function initGridArray() {
+    grid = [];
+    for (let row = 0; row < ROWS; row++) {
+      grid[row] = new Array(COLS).fill(null);
+    }
+  }
+
+  function initBubbleGrid() {
+    bubbles = [];
+    for (let row = 0; row < 6; row++) {
+      for (let col = 0; col < COLS; col++) {
+        if (row % 2 === 1 && col === COLS - 1) continue;
+        const x = getBubbleX(row, col);
+        const y = getBubbleY(row);
+        const color = COLORS[Math.floor(Math.random() * COLORS.length)];
+        const bubble = { x, y, row, col, color, popping: false, opacity: 1, radius: BUBBLE_RADIUS };
+        bubbles.push(bubble);
+        grid[row][col] = bubble;
+      }
+    }
+  }
+
+  function getBubbleX(row, col) {
+    return col * BUBBLE_RADIUS * 2 + BUBBLE_RADIUS + (row % 2 === 1 ? BUBBLE_RADIUS : 0);
+  }
+
+  function getBubbleY(row) {
+    return row * BUBBLE_RADIUS * 1.73 + BUBBLE_RADIUS;
+  }
+
+  function createNewBubble() {
+    return {
+      x: shooterX,
+      y: shooterY,
+      radius: BUBBLE_RADIUS,
+      color: COLORS[Math.floor(Math.random() * COLORS.length)],
+      dx: 0,
+      dy: 0,
+      isMoving: false
+    };
+  }
+
+  function shootBubble() {
+    const speed = 8;
+    currentBubble.dx = Math.cos(angle) * speed;
+    currentBubble.dy = Math.sin(angle) * speed;
+    currentBubble.isMoving = true;
+    if (!muted) shootSound.play();
+  }
+
+  function drawBubbles() {
+    for (let b of bubbles) {
+      if (b.popping) {
+        b.radius -= 0.5;
+        b.opacity -= 0.05;
+        if (b.radius <= 0 || b.opacity <= 0) {
+          grid[b.row][b.col] = null;
+          bubbles.splice(bubbles.indexOf(b), 1);
+          score += 10;
+          scoreDisplay.textContent = score;
+          continue;
+        }
+      }
+      ctx.globalAlpha = b.opacity || 1;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
+      ctx.fillStyle = b.color;
+      ctx.fill();
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function drawShooter() {
+    ctx.beginPath();
+    ctx.moveTo(shooterX, shooterY);
+    ctx.lineTo(shooterX + Math.cos(angle) * 40, shooterY + Math.sin(angle) * 40);
+    ctx.strokeStyle = "#000";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(currentBubble.x, currentBubble.y, currentBubble.radius, 0, Math.PI * 2);
+    ctx.fillStyle = currentBubble.color;
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  function updateBubble() {
+    if (currentBubble.isMoving) {
+      currentBubble.x += currentBubble.dx;
+      currentBubble.y += currentBubble.dy;
+
+      if (currentBubble.x - BUBBLE_RADIUS < 0 || currentBubble.x + BUBBLE_RADIUS > CANVAS_WIDTH) {
+        currentBubble.dx *= -1;
+      }
+
+      if (currentBubble.y - BUBBLE_RADIUS <= 0) {
+        stickToNearestGrid();
+        return;
+      }
+
+      for (let b of bubbles) {
+        const dx = currentBubble.x - b.x;
+        const dy = currentBubble.y - b.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist <= BUBBLE_RADIUS * 2 - 1) {
+          stickToNearestGrid();
+          return;
+        }
+      }
+    }
+  }
+
+  function stickToNearestGrid() {
+    currentBubble.isMoving = false;
+    const approxRow = Math.round((currentBubble.y - BUBBLE_RADIUS) / (BUBBLE_RADIUS * 1.73));
+    const approxCol = Math.round(
+      (currentBubble.x - BUBBLE_RADIUS - (approxRow % 2 === 1 ? BUBBLE_RADIUS : 0)) / (BUBBLE_RADIUS * 2)
+    );
+
+    const row = Math.min(Math.max(approxRow, 0), ROWS - 1);
+    const col = Math.min(Math.max(approxCol, 0), COLS - 1);
+
+    if (!grid[row][col]) {
+      const x = getBubbleX(row, col);
+      const y = getBubbleY(row);
+      const newBubble = {
+        x, y, row, col,
+        color: currentBubble.color,
+        popping: false,
+        opacity: 1,
+        radius: BUBBLE_RADIUS
+      };
+      grid[row][col] = newBubble;
+      bubbles.push(newBubble);
+      checkForMatch(newBubble);
+    }
+
+    currentBubble = createNewBubble();
+  }
+
+  function checkForMatch(bubble) {
+    let group = [];
+    let visited = new Set();
+
+    function dfs(b) {
+      group.push(b);
+      visited.add(b);
+      for (let other of bubbles) {
+        if (visited.has(other)) continue;
+        if (other.color !== b.color) continue;
+        const dx = other.x - b.x;
+        const dy = other.y - b.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist <= BUBBLE_RADIUS * 2 + 1) {
+          dfs(other);
+        }
+      }
+    }
+
+    dfs(bubble);
+
+    if (group.length >= 3) {
+      group.forEach(b => b.popping = true);
+      if (!muted) popSound.play();
+    }
+  }
+
+  function draw() {
+    if (!isGameOver) {
+      ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      drawBubbles();
+      drawShooter();
+      updateBubble();
+      requestAnimationFrame(draw);
+    }
+  }
+
+  function startTimer() {
+    timerInterval = setInterval(() => {
+      if (isGameOver) return clearInterval(timerInterval);
+      timeLeft--;
+      timeDisplay.textContent = timeLeft;
+      if (timeLeft <= 0) {
+        gameOver();
+      }
+    }, 1000);
+  }
+
+  function gameOver() {
+    isGameOver = true;
+    finalScoreDisplay.textContent = score;
+    gameOverScreen.style.display = "flex";
+  }
+
+  function restartGame() {
+    isGameOver = false;
+    score = 0;
+    timeLeft = 150;
+    scoreDisplay.textContent = "0";
+    timeDisplay.textContent = "150";
+    gameOverScreen.style.display = "none";
+    initGridArray();
+    initBubbleGrid();
+    currentBubble = createNewBubble();
+    draw();
+    startTimer();
+  }
+
+  function startGame() {
+    startScreen.style.display = "none";
+    initGridArray();
+    initBubbleGrid();
+    currentBubble = createNewBubble();
+    score = 0;
+    timeLeft = 150;
+    isGameOver = false;
+    draw();
+    startTimer();
+    if (!muted) bgMusic.play();
+  }
+
+  muteBtn.onclick = function () {
+    muted = !muted;
+    muteBtn.textContent = muted ? "🔇 Unmute" : "🔊 Mute";
+    bgMusic.muted = muted;
+    shootSound.muted = muted;
+    popSound.muted = muted;
+    if (!muted) bgMusic.play();
+  };
+
+  canvas.addEventListener("mousemove", function (e) {
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    angle = Math.atan2(mouseY - shooterY, mouseX - shooterX);
+  });
+
+  canvas.addEventListener("click", function () {
+    if (!currentBubble.isMoving && !isGameOver && startScreen.style.display === "none") {
+      shootBubble();
+    }
+  });
+</script>
+
+</body>
+</html>
